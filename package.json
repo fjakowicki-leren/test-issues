@@ -1,0 +1,16 @@
+{
+  "name": "issue-env",
+  "version": "1.0.0",
+  "description": "Consola de trabajo atada a un issue de GitHub: los commits llevan el prefijo del issue activo.",
+  "type": "module",
+  "bin": {
+    "issue": "./bin/issue.js"
+  },
+  "scripts": {
+    "start": "node bin/issue.js",
+    "issue": "node bin/issue.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Instalado por issue-env. Prefija commits con el issue activo.
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+HOOK=$(basename "$0")
+exec node "$ROOT/src/git-hook.js" "$HOOK" "$@"
