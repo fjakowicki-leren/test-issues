@@ -4,14 +4,17 @@ import { stdin as input, stdout as output } from "node:process";
 import {
   commit,
   currentBranch,
+  diff,
   hasAnyChanges,
   hasStagedChanges,
+  log,
+  pull,
   push,
   shortStatus,
   stageAll,
 } from "./git.js";
 import { applyPrefix } from "./session.js";
-import { c } from "./ui.js";
+import { c, clipTitle, printBlock } from "./ui.js";
 
 function help() {
   console.log(`
@@ -71,19 +74,40 @@ function makeReader(rl) {
       rl.setPrompt(promptText);
       rl.prompt();
       return new Promise((resolve) => {
-        pending = resolve;
+        pending = (line) => {
+          // Sin TTY nadie hace eco de lo tipeado: lo completamos nosotros.
+          if (line !== null && !input.isTTY) output.write(`${line}\n`);
+          resolve(line);
+        };
       });
     },
   };
 }
 
-function runShell(command) {
+function runShell(rl, command) {
+  rl.pause();
   const result = spawnSync(command, { shell: true, stdio: "inherit" });
+  rl.resume();
   return result.status ?? 1;
 }
 
+function report({ status, out }, okMessage) {
+  printBlock(out);
+  if (status === 0) {
+    if (okMessage) console.log(c.green(`  ${okMessage}`));
+    return true;
+  }
+  return false;
+}
+
+/** Prompt de ancho fijo: el título va arriba para que el input no se mueva. */
 function promptFor(session) {
   return `${c.magenta(`[#${session.number}]`)} ${c.dim("›")} `;
+}
+
+function printTitle(session) {
+  const title = clipTitle(session.title);
+  if (title) console.log(c.dim(`  ${title}`));
 }
 
 async function doCommit(reader, session, message) {
@@ -94,14 +118,13 @@ async function doCommit(reader, session, message) {
 
   if (!hasStagedChanges()) {
     console.log(c.dim("  Nada en el stage, agregando todos los cambios..."));
-    if (stageAll() !== 0) {
+    if (!report(stageAll())) {
       console.log(c.red("  Falló git add."));
       return;
     }
   }
 
-  const full = applyPrefix(message, session.number);
-  if (commit(full) !== 0) {
+  if (!report(commit(applyPrefix(message, session.number)))) {
     console.log(c.red("  El commit falló."));
     return;
   }
@@ -114,9 +137,7 @@ async function doCommit(reader, session, message) {
     console.log(c.dim("  Commit local. Podés enviarlo después con /push."));
     return;
   }
-  if (push() === 0) {
-    console.log(c.green("  Enviado."));
-  } else {
+  if (!report(push(), "Enviado.")) {
     console.log(c.red("  El push falló. Reintentá con /push."));
   }
 }
@@ -140,6 +161,7 @@ export async function runEnvironment(session) {
   console.log("");
 
   while (!reader.closed) {
+    printTitle(session);
     const line = await reader.ask(promptFor(session));
     if (line === null) break;
 
@@ -155,28 +177,28 @@ export async function runEnvironment(session) {
       continue;
     }
     if (lower === "/status" || lower === "/st") {
-      console.log(shortStatus() || c.dim("  Sin cambios."));
+      printBlock(shortStatus() || "Sin cambios.");
       continue;
     }
     if (lower === "/diff") {
-      runShell("git --no-pager diff HEAD");
+      printBlock(diff().out || "Sin cambios.");
       continue;
     }
     if (lower === "/add") {
       stageAll();
-      console.log(shortStatus());
+      printBlock(shortStatus());
       continue;
     }
     if (lower === "/log") {
-      runShell("git --no-pager log --oneline -10");
+      printBlock(log().out || "Todavía no hay commits.");
       continue;
     }
     if (lower === "/push") {
-      if (push() === 0) console.log(c.green("  Enviado."));
+      report(push(), "Enviado.");
       continue;
     }
     if (lower === "/pull") {
-      runShell("git pull --ff-only");
+      report(pull());
       continue;
     }
     if (lower === "/issue") {
@@ -185,7 +207,7 @@ export async function runEnvironment(session) {
     }
     if (value.startsWith("!")) {
       const command = value.slice(1).trim();
-      if (command) runShell(command);
+      if (command) runShell(rl, command);
       continue;
     }
     if (value.startsWith("/")) {

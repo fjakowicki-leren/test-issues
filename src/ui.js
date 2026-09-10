@@ -1,15 +1,36 @@
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
+const useColor =
+  Boolean(output.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+
+const paint = (code) => (s) =>
+  useColor ? `\x1b[${code}m${s}\x1b[0m` : String(s);
+
 const c = {
-  dim: (s) => `\x1b[2m${s}\x1b[0m`,
-  bold: (s) => `\x1b[1m${s}\x1b[0m`,
-  cyan: (s) => `\x1b[36m${s}\x1b[0m`,
-  magenta: (s) => `\x1b[35m${s}\x1b[0m`,
-  yellow: (s) => `\x1b[33m${s}\x1b[0m`,
-  green: (s) => `\x1b[32m${s}\x1b[0m`,
-  red: (s) => `\x1b[31m${s}\x1b[0m`,
+  dim: paint(2),
+  bold: paint(1),
+  cyan: paint(36),
+  magenta: paint(35),
+  yellow: paint(33),
+  green: paint(32),
+  red: paint(31),
 };
+
+export function clipTitle(title, max = 50) {
+  const text = String(title || "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** Imprime la salida de un comando indentada al resto de la consola. */
+export function printBlock(text) {
+  const value = String(text || "").trim();
+  if (!value) return;
+  for (const line of value.split(/\r?\n/)) {
+    console.log(`  ${line}`);
+  }
+}
 
 export function banner(owner, repo) {
   console.log("");
@@ -47,7 +68,7 @@ export function printSession(session) {
     return;
   }
   console.log(
-    `  Issue activo: ${c.bold(`#${session.number}`)}  ${session.title}`,
+    `  Issue activo: ${c.bold(`#${session.number}`)}  ${clipTitle(session.title)}`,
   );
   console.log(`  Prefijo de commits: ${c.cyan(session.prefix)}`);
   if (session.url) console.log(c.dim(`  ${session.url}`));

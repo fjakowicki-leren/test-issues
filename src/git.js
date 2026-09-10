@@ -1,24 +1,37 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
-export function gitOut(args) {
-  try {
-    return execFileSync("git", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    return "";
-  }
+const NOISE = [
+  /^warning: (LF|CRLF) will be replaced by (CRLF|LF)/,
+  /^The file will have its original line endings/,
+];
+
+function clean(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !NOISE.some((re) => re.test(line)))
+    .join("\n")
+    .trim();
 }
 
-export function gitRun(args) {
-  const result = spawnSync("git", args, { stdio: "inherit" });
-  return result.status ?? 1;
+/**
+ * Corre git capturando la salida. No heredamos la consola a propósito: en
+ * Windows los binarios de git resetean el modo VT y a partir de ahí la
+ * terminal imprime los códigos ANSI en crudo.
+ */
+export function git(args) {
+  const result = spawnSync("git", args, { encoding: "utf8" });
+  return {
+    status: result.status ?? 1,
+    out: clean(`${result.stdout || ""}${result.stderr || ""}`),
+  };
+}
+
+export function gitOut(args) {
+  return git(args).out;
 }
 
 function gitQuiet(args) {
-  const result = spawnSync("git", args, { stdio: "ignore" });
-  return result.status ?? 1;
+  return spawnSync("git", args, { stdio: "ignore" }).status ?? 1;
 }
 
 export function currentBranch() {
@@ -42,16 +55,26 @@ export function hasUpstream() {
 }
 
 export function stageAll() {
-  return gitRun(["add", "-A"]);
+  return git(["add", "-A"]);
 }
 
 export function commit(message) {
-  return gitRun(["commit", "-m", message]);
+  return git(["commit", "-m", message]);
 }
 
 export function push() {
-  if (hasUpstream()) {
-    return gitRun(["push"]);
-  }
-  return gitRun(["push", "-u", "origin", currentBranch()]);
+  if (hasUpstream()) return git(["push"]);
+  return git(["push", "-u", "origin", currentBranch()]);
+}
+
+export function pull() {
+  return git(["pull", "--ff-only"]);
+}
+
+export function log(count = 10) {
+  return git(["--no-pager", "log", "--oneline", `-${count}`]);
+}
+
+export function diff() {
+  return git(["--no-pager", "diff", "HEAD"]);
 }

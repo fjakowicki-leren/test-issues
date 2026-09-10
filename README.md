@@ -36,7 +36,7 @@ La consola queda abierta hasta que escribas `/exit`. Todo lo que no sea un coman
 | `!<cmd>` | Ejecuta cualquier comando en la shell |
 | `/exit` | Sale del entorno |
 
-Sin issue activo, `git commit` se aborta.
+Sin issue activo, `git commit` se aborta. Los colores se apagan solos si la salida no es una terminal, o con `NO_COLOR=1`.
 
 Los mensajes quedan así (el prefijo no usa `#` al inicio de la línea porque Git lo trata como comentario):
 
@@ -53,4 +53,5 @@ Requiere [GitHub CLI](https://cli.github.com/). El login se hace **una sola vez 
 - `bin/issue.js` + `src/` — auth, listado, selección de issue y la consola del entorno.
 - `issue.sh` — atajo que llama al CLI de Node.
 - La consola es un prompt propio (`src/repl.js`), no un bash anidado: un bash interactivo lanzado desde Node sobre MSYS se cierra apenas arranca.
+- Los comandos de git se corren capturando la salida en vez de heredar la consola. En Windows, git resetea el modo VT de la terminal y desde ahí los códigos ANSI se imprimen en crudo (`←[1G←[0J`).
 - Hooks `prepare-commit-msg` y `commit-msg` en `.git/hooks` (copia versionada en `.githooks/`).
