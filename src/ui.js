@@ -333,7 +333,7 @@ export function printSession(session) {
     return;
   }
   console.log(
-    `  Issue activo: ${c.bold(`#${session.number}`)}  ${clipTitle(session.title)}`,
+    `  Issue activo: ${c.green(c.bold(`#${session.number}`))}  ${c.green(clipTitle(session.title))}`,
   );
   console.log(`  Prefijo de commits: ${c.cyan(session.prefix)}`);
   if (session.url) console.log(c.dim(`  ${session.url}`));

@@ -42,7 +42,7 @@ function report({ status, out }, okMessage) {
 
 /** Prompt de ancho fijo: el título va arriba para que el input no se mueva. */
 function promptFor(session) {
-  return `${c.magenta(`[#${session.number}]`)} ${c.dim("›")} `;
+  return `${c.green(`[#${session.number}]`)} ${c.dim("›")} `;
 }
 
 function printTitle(session) {
