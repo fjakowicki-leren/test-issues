@@ -3,6 +3,48 @@ import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { resolveGitDir } from "./repo.js";
 
+let resolvedGh = undefined;
+
+function fallbackGhPaths() {
+  const local = process.env.LOCALAPPDATA;
+  return [
+    "C:\\Program Files\\GitHub CLI\\gh.exe",
+    "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
+    local ? path.join(local, "Programs", "GitHub CLI", "gh.exe") : "",
+  ].filter(Boolean);
+}
+
+/** Ruta a `gh`. Tras un install de winget el PATH de la terminal actual suele no actualizarse. */
+export function resolveGh() {
+  if (resolvedGh !== undefined) return resolvedGh;
+
+  for (const candidate of fallbackGhPaths()) {
+    if (fs.existsSync(candidate)) {
+      resolvedGh = candidate;
+      return resolvedGh;
+    }
+  }
+
+  for (const name of process.platform === "win32" ? ["gh.exe", "gh"] : ["gh"]) {
+    try {
+      execFileSync(name, ["--version"], { stdio: "ignore" });
+      resolvedGh = name;
+      return resolvedGh;
+    } catch {
+      // Sigue con el siguiente candidato.
+    }
+  }
+
+  resolvedGh = null;
+  return resolvedGh;
+}
+
+function ghBin() {
+  const bin = resolveGh();
+  if (!bin) throw new Error(missingGhMessage());
+  return bin;
+}
+
 function authMarkerPath() {
   return path.join(resolveGitDir(), "issue-env-auth.json");
 }
@@ -34,17 +76,12 @@ export function clearAuthMarker() {
 }
 
 export function ghAvailable() {
-  try {
-    execFileSync("gh", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+  return Boolean(resolveGh());
 }
 
 export function ghAuthStatus() {
   try {
-    const out = execFileSync("gh", ["auth", "status", "--hostname", "github.com"], {
+    const out = execFileSync(ghBin(), ["auth", "status", "--hostname", "github.com"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -67,7 +104,7 @@ function parseUser(output) {
 
 function ghAuthLogin() {
   return new Promise((resolve, reject) => {
-    const child = spawn("gh", ["auth", "login", "--hostname", "github.com"], {
+    const child = spawn(ghBin(), ["auth", "login", "--hostname", "github.com"], {
       stdio: "inherit",
     });
     child.on("exit", (code) => {

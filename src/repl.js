@@ -1,6 +1,4 @@
 import { spawnSync } from "node:child_process";
-import readline from "node:readline";
-import { stdin as input, stdout as output } from "node:process";
 import {
   commit,
   currentBranch,
@@ -14,7 +12,7 @@ import {
   stageAll,
 } from "./git.js";
 import { applyPrefix } from "./session.js";
-import { c, clipTitle, printBlock } from "./ui.js";
+import { askLine, c, clipTitle, printBlock } from "./ui.js";
 
 function help() {
   console.log(`
@@ -28,66 +26,8 @@ function help() {
 `);
 }
 
-/**
- * Lector con cola: readline descarta las líneas que llegan sin una pregunta
- * pendiente (pasa cuando la entrada viene por pipe) y deja colgada la promesa
- * si stdin se cierra. Acá encolamos y devolvemos null al cerrar.
- */
-function makeReader(rl) {
-  const queue = [];
-  let pending = null;
-  let closed = false;
-
-  rl.on("line", (line) => {
-    if (pending) {
-      const resolve = pending;
-      pending = null;
-      resolve(line);
-      return;
-    }
-    queue.push(line);
-  });
-
-  rl.on("close", () => {
-    closed = true;
-    if (pending) {
-      const resolve = pending;
-      pending = null;
-      resolve(null);
-    }
-  });
-
-  return {
-    get closed() {
-      return closed;
-    },
-    reprompt() {
-      if (!closed) rl.prompt();
-    },
-    ask(promptText) {
-      if (queue.length > 0) {
-        const line = queue.shift();
-        output.write(`${promptText}${line}\n`);
-        return Promise.resolve(line);
-      }
-      if (closed) return Promise.resolve(null);
-      rl.setPrompt(promptText);
-      rl.prompt();
-      return new Promise((resolve) => {
-        pending = (line) => {
-          // Sin TTY nadie hace eco de lo tipeado: lo completamos nosotros.
-          if (line !== null && !input.isTTY) output.write(`${line}\n`);
-          resolve(line);
-        };
-      });
-    },
-  };
-}
-
-function runShell(rl, command) {
-  rl.pause();
+function runShell(command) {
   const result = spawnSync(command, { shell: true, stdio: "inherit" });
-  rl.resume();
   return result.status ?? 1;
 }
 
@@ -110,7 +50,16 @@ function printTitle(session) {
   if (title) console.log(c.dim(`  ${title}`));
 }
 
-async function doCommit(reader, session, message) {
+function envAsk(question) {
+  return askLine(question, {
+    onEscape: "empty",
+    onCtrlC: () => {
+      console.log(`  Usá ${c.cyan("/exit")} para salir del entorno.`);
+    },
+  });
+}
+
+async function doCommit(session, message) {
   if (!hasAnyChanges() && !hasStagedChanges()) {
     console.log(c.yellow("  No hay cambios para commitear."));
     return;
@@ -129,7 +78,7 @@ async function doCommit(reader, session, message) {
     return;
   }
 
-  const raw = await reader.ask(
+  const raw = await envAsk(
     `  ¿Push a origin/${currentBranch()}? ${c.dim("[S/n]")} `,
   );
   const answer = (raw ?? "n").trim().toLowerCase();
@@ -146,23 +95,17 @@ async function doCommit(reader, session, message) {
  * Consola del entorno. Queda abierta hasta /exit: cada línea que no sea un
  * comando se toma como mensaje de commit.
  * Devuelve "exit" o "switch" para que el CLI decida qué hacer.
+ * No usa readline: en Git Bash eso rompe las flechas al volver al menú.
  */
 export async function runEnvironment(session) {
-  const rl = readline.createInterface({ input, output, prompt: promptFor(session) });
-  const reader = makeReader(rl);
   let action = "exit";
-
-  rl.on("SIGINT", () => {
-    console.log(`\n  Usá ${c.cyan("/exit")} para salir del entorno.`);
-    reader.reprompt();
-  });
 
   console.log(c.dim("  Escribí un mensaje para commitear, o /help para ver los comandos."));
   console.log("");
 
-  while (!reader.closed) {
+  while (true) {
     printTitle(session);
-    const line = await reader.ask(promptFor(session));
+    const line = await envAsk(promptFor(session));
     if (line === null) break;
 
     const value = line.trim();
@@ -207,7 +150,7 @@ export async function runEnvironment(session) {
     }
     if (value.startsWith("!")) {
       const command = value.slice(1).trim();
-      if (command) runShell(rl, command);
+      if (command) runShell(command);
       continue;
     }
     if (value.startsWith("/")) {
@@ -215,10 +158,9 @@ export async function runEnvironment(session) {
       continue;
     }
 
-    await doCommit(reader, session, value);
+    await doCommit(session, value);
   }
 
-  rl.close();
   if (action === "exit") {
     console.log("");
     console.log(

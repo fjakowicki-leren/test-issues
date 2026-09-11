@@ -1,27 +1,29 @@
 import { clearAuthMarker, ensureGhAuth } from "./gh.js";
-import { createIssue, listOpenIssues } from "./github.js";
+import { createIssue, listOpenIssues, listRecentIssues } from "./github.js";
 import { installHooks } from "./hooks.js";
 import { githubRepoFromOrigin } from "./repo.js";
 import { runEnvironment } from "./repl.js";
 import { clearSession, readSession, writeSession } from "./session.js";
 import {
-  ask,
+  askLine,
   banner,
   c,
-  printIssues,
+  formatIssueOption,
+  printRecentIssues,
   printSession,
-  withRl,
+  selectMenu,
+  withRawStdin,
 } from "./ui.js";
 
 function usage() {
   console.log(`
 ${c.bold("issue-env")} — consola de trabajo por issue de GitHub
 
-  ${c.cyan("./issue.sh")}          Lista issues abiertos, obliga a elegir o crear uno, abre la consola
+  ${c.cyan("./issue.sh")}          Muestra los últimos 10 issues, obliga a elegir uno abierto o crear, abre la consola
   ${c.cyan("./issue.sh status")}   Muestra el issue activo
   ${c.cyan("./issue.sh stop")}     Cierra la sesión (los commits quedan bloqueados hasta elegir otro)
   ${c.cyan("./issue.sh login")}    Fuerza un nuevo gh auth login
-  ${c.cyan("./issue.sh setup")}    Instala los hooks de git (también ocurre en start)
+  ${c.cyan("./issue.sh setup")}    Instala los hooks de git y actualiza la copia versionada en .githooks/
 
 El login de GitHub se hace una sola vez por entorno y queda cacheado.
 Sin issue activo no se puede hacer commit. El mensaje queda como: ${c.bold("[#12] resumen")}
@@ -39,55 +41,73 @@ function printAuth({ state, user }) {
   }
 }
 
-async function pickIssue(issues, { owner, repo }) {
-  return withRl(async (rl) => {
-    while (true) {
-      console.log(c.bold("  Tenés que elegir un issue para trabajar."));
-      console.log(`  ${c.cyan("n")}  crear un issue nuevo`);
-      if (issues.length > 0) {
-        console.log(`  ${c.cyan("1")}-${c.cyan(String(issues.length))}  usar uno de la lista`);
-      }
-      console.log(`  ${c.cyan("q")}  cancelar`);
-      console.log("");
-      const answer = (await ask(rl, "  Elegí una opción: ")).toLowerCase();
-      if (answer === "q" || answer === "quit" || answer === "salir") {
-        return null;
-      }
-      if (answer === "n" || answer === "nuevo" || answer === "new") {
-        const title = await ask(rl, "  Título del issue: ");
-        if (!title) {
-          console.log(c.red("  El título no puede estar vacío."));
-          continue;
-        }
-        const body = await ask(rl, "  Descripción (opcional): ");
-        console.log(c.dim("  Creando issue en GitHub..."));
-        const created = await createIssue(owner, repo, { title, body });
-        console.log(c.green(`  Creado ${created.html_url}`));
-        return created;
-      }
-      const index = Number.parseInt(answer, 10);
-      if (Number.isInteger(index) && index >= 1 && index <= issues.length) {
-        return issues[index - 1];
-      }
-      console.log(c.red("  Opción inválida. Es obligatorio elegir o crear un issue."));
-      console.log("");
+async function createIssueFlow({ owner, repo }) {
+  const title = await askLine("  Título del issue: ");
+  if (title == null) return undefined;
+  if (!title) {
+    console.log(c.red("  El título no puede estar vacío."));
+    return undefined;
+  }
+  const body = await askLine("  Descripción (opcional): ");
+  if (body == null) return undefined;
+  console.log(c.dim("  Creando issue en GitHub..."));
+  const created = await createIssue(owner, repo, { title, body });
+  console.log(c.green(`  Creado ${created.html_url}`));
+  return created;
+}
+
+async function pickOpenIssue(issues, { owner, repo }) {
+  while (true) {
+    const items = [
+      ...issues.map((issue) => ({
+        value: issue,
+        label: formatIssueOption(issue),
+      })),
+      { value: "create", label: "Crear un issue nuevo" },
+      { value: "cancel", label: "Cancelar" },
+    ];
+    const title = issues.length
+      ? "Issues abiertos"
+      : "No hay issues abiertos";
+    const chosen = await selectMenu(title, items);
+    if (chosen == null || chosen === "cancel") return null;
+    if (chosen === "create") {
+      const created = await createIssueFlow({ owner, repo });
+      if (created) return created;
+      continue;
     }
-  });
+    return chosen;
+  }
 }
 
 async function selectIssue(owner, repo) {
-  console.log(c.dim("  Cargando issues abiertos..."));
-  const issues = await listOpenIssues(owner, repo);
-  printIssues(issues);
+  return withRawStdin(async () => {
+    let chosen = null;
+    while (!chosen) {
+      console.log(c.dim("  Cargando los 10 issues más recientes..."));
+      printRecentIssues(await listRecentIssues(owner, repo, 10));
+      const action = await selectMenu("¿Qué querés hacer?", [
+        { value: "list", label: "Elegir de la lista" },
+        { value: "create", label: "Crear un issue nuevo" },
+        { value: "cancel", label: "Cancelar" },
+      ]);
+      if (action == null || action === "cancel") break;
+      if (action === "create") {
+        chosen = await createIssueFlow({ owner, repo });
+        continue;
+      }
+      console.log(c.dim("  Cargando issues abiertos..."));
+      const open = await listOpenIssues(owner, repo);
+      chosen = await pickOpenIssue(open, { owner, repo });
+    }
+    if (!chosen) return null;
 
-  const chosen = await pickIssue(issues, { owner, repo });
-  if (!chosen) return null;
-
-  const session = writeSession(chosen);
-  console.log("");
-  printSession(session);
-  console.log("");
-  return session;
+    const session = writeSession(chosen);
+    console.log("");
+    printSession(session);
+    console.log("");
+    return session;
+  });
 }
 
 async function cmdStart() {
@@ -105,25 +125,27 @@ async function cmdStart() {
     console.log("");
   }
 
-  let session = await selectIssue(owner, repo);
-  if (!session) {
-    console.log("");
-    console.log(c.yellow("  No se activó ningún issue. Los commits seguirán bloqueados."));
-    process.exitCode = 1;
-    return;
-  }
-
-  while (session) {
-    const action = await runEnvironment(session);
-    if (action !== "switch") break;
-    console.log("");
-    const next = await selectIssue(owner, repo);
-    if (!next) {
-      console.log(c.dim(`  Seguís en #${session.number}.`));
-      continue;
+  await withRawStdin(async () => {
+    let session = await selectIssue(owner, repo);
+    if (!session) {
+      console.log("");
+      console.log(c.yellow("  No se activó ningún issue. Los commits seguirán bloqueados."));
+      process.exitCode = 1;
+      return;
     }
-    session = next;
-  }
+
+    while (session) {
+      const action = await runEnvironment(session);
+      if (action !== "switch") break;
+      console.log("");
+      const next = await selectIssue(owner, repo);
+      if (!next) {
+        console.log(c.dim(`  Seguís en #${session.number}.`));
+        continue;
+      }
+      session = next;
+    }
+  });
 }
 
 function cmdStatus() {
@@ -150,7 +172,7 @@ async function cmdLogin() {
 }
 
 function cmdSetup() {
-  const names = installHooks();
+  const names = installHooks({ tracked: true });
   console.log(`  Hooks instalados: ${names.join(", ")}`);
 }
 

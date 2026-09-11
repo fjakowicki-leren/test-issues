@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
+import { resolveGh } from "./gh.js";
 
 const API = "https://api.github.com";
 
 function tokenFromGhCli() {
   try {
-    return execFileSync("gh", ["auth", "token"], {
+    const gh = resolveGh();
+    if (!gh) return "";
+    return execFileSync(gh, ["auth", "token"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
@@ -61,21 +64,33 @@ async function request(pathname, { method = "GET", body, token } = {}) {
   return data;
 }
 
-export async function listOpenIssues(owner, repo) {
+async function listIssues(owner, repo, { state, limit, sort = "created" }) {
   const issues = [];
   let page = 1;
-  while (page <= 10) {
+  const perPage = Math.min(100, Math.max(limit || 100, 10));
+  while (page <= 10 && (limit == null || issues.length < limit)) {
     const batch = await request(
-      `/repos/${owner}/${repo}/issues?state=open&per_page=100&page=${page}`,
+      `/repos/${owner}/${repo}/issues?state=${state}&sort=${sort}&direction=desc&per_page=${perPage}&page=${page}`,
     );
     if (!Array.isArray(batch) || batch.length === 0) break;
     for (const item of batch) {
-      if (!item.pull_request) issues.push(item);
+      if (item.pull_request) continue;
+      if (state !== "all" && item.state !== state) continue;
+      issues.push(item);
+      if (limit != null && issues.length >= limit) break;
     }
-    if (batch.length < 100) break;
+    if (batch.length < perPage) break;
     page += 1;
   }
   return issues;
+}
+
+export function listOpenIssues(owner, repo) {
+  return listIssues(owner, repo, { state: "open" });
+}
+
+export function listRecentIssues(owner, repo, limit = 10) {
+  return listIssues(owner, repo, { state: "all", limit, sort: "updated" });
 }
 
 export async function createIssue(owner, repo, { title, body }) {
