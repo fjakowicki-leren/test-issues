@@ -33,6 +33,7 @@ La consola queda abierta hasta que escribas `/exit`. Todo lo que no sea un coman
 | `/add` | Stagea todo |
 | `/push`, `/pull` | Envía o trae de origin |
 | `/issue` | Cambia de issue sin salir |
+| `/deploy` | Commitea con el prefijo `[#N] [deploy]` |
 | `!<cmd>` | Ejecuta cualquier comando en la shell |
 | `/exit` | Sale del entorno |
 

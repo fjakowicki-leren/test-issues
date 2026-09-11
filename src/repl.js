@@ -11,7 +11,7 @@ import {
   shortStatus,
   stageAll,
 } from "./git.js";
-import { applyPrefix } from "./session.js";
+import { applyDeployPrefix, applyPrefix } from "./session.js";
 import { askLine, c, clipTitle, printBlock } from "./ui.js";
 
 function help() {
@@ -22,7 +22,7 @@ function help() {
   ${c.cyan("/add")}      stagea todo              ${c.cyan("/log")}      últimos commits
   ${c.cyan("/push")}     envía a origin           ${c.cyan("/pull")}     trae de origin
   ${c.cyan("/issue")}    cambiar de issue         ${c.cyan("/exit")}     salir del entorno
-  ${c.cyan("!<cmd>")}    ejecuta un comando en la shell
+  ${c.cyan("/deploy")}   commitea con ${c.bold("[deploy]")}   ${c.cyan("!<cmd>")}    comando en la shell
 `);
 }
 
@@ -59,7 +59,7 @@ function envAsk(question) {
   });
 }
 
-async function doCommit(session, message) {
+async function doCommit(session, message, { deploy = false } = {}) {
   if (!hasAnyChanges() && !hasStagedChanges()) {
     console.log(c.yellow("  No hay cambios para commitear."));
     return;
@@ -73,7 +73,10 @@ async function doCommit(session, message) {
     }
   }
 
-  if (!report(commit(applyPrefix(message, session.number)))) {
+  const text = deploy
+    ? applyDeployPrefix(message, session.number)
+    : applyPrefix(message, session.number);
+  if (!report(commit(text))) {
     console.log(c.red("  El commit falló."));
     return;
   }
@@ -147,6 +150,16 @@ export async function runEnvironment(session) {
     if (lower === "/issue") {
       action = "switch";
       break;
+    }
+    if (lower === "/deploy" || lower.startsWith("/deploy ")) {
+      const extra = value.slice("/deploy".length).trim();
+      const message = extra || (await envAsk("  Mensaje del deploy: "));
+      if (!message) {
+        console.log(c.red("  El mensaje no puede estar vacío."));
+        continue;
+      }
+      await doCommit(session, message, { deploy: true });
+      continue;
     }
     if (value.startsWith("!")) {
       const command = value.slice(1).trim();

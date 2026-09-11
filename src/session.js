@@ -66,3 +66,28 @@ export function applyPrefix(message, number) {
   lines[idx] = `${prefix} ${lines[idx].replace(/^\s+/, "")}`;
   return lines.join("\n");
 }
+
+export const DEPLOY_PREFIX = "[deploy]";
+
+export function messageHasDeployPrefix(message) {
+  return /\[deploy\]/i.test(firstCommitLine(message));
+}
+
+/** Deja el mensaje como `[#12] [deploy] resumen`. */
+export function applyDeployPrefix(message, number) {
+  const withIssue = applyPrefix(message, number);
+  if (messageHasDeployPrefix(withIssue)) return withIssue;
+  const lines = String(withIssue).split(/\r?\n/);
+  const idx = lines.findIndex((line) => line.trim() && !isGitCommentLine(line));
+  const issue = prefixFor(number);
+  if (idx === -1) {
+    return `${issue} ${DEPLOY_PREFIX} \n${withIssue}`;
+  }
+  const match = lines[idx].match(new RegExp(`^(\\s*\\[#${number}\\])\\s*`));
+  const rest = match
+    ? lines[idx].slice(match[0].length).replace(/^\s+/, "")
+    : lines[idx].replace(/^\s+/, "");
+  const head = match ? match[1] : issue;
+  lines[idx] = rest ? `${head} ${DEPLOY_PREFIX} ${rest}` : `${head} ${DEPLOY_PREFIX}`;
+  return lines.join("\n");
+}
