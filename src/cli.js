@@ -173,7 +173,10 @@ async function selectIssue(owner, repo) {
 async function cmdStart() {
   const { owner, repo } = githubRepoFromOrigin();
   banner(owner, repo);
-  installHooks();
+  const { installed } = installHooks();
+  if (installed.length) {
+    console.log(c.dim(`  Hooks instalados: ${installed.join(", ")}`));
+  }
 
   printAuth(await ensureGhAuth());
   console.log("");
@@ -256,8 +259,12 @@ async function cmdLogin() {
 }
 
 function cmdSetup() {
-  const names = installHooks({ tracked: true });
-  console.log(`  Hooks instalados: ${names.join(", ")}`);
+  const { all, installed } = installHooks({ tracked: true });
+  if (installed.length) {
+    console.log(`  Hooks instalados: ${installed.join(", ")}`);
+  } else {
+    console.log(`  Hooks ya estaban instalados: ${all.join(", ")}`);
+  }
 }
 
 export async function main(argv) {

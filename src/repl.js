@@ -8,6 +8,8 @@ import {
   stageAll,
 } from "./git.js";
 import { closeIssue } from "./github.js";
+import { toggleHooksDisabled } from "./hooks.js";
+import { formatLintErrors, lintAllLiquid } from "./lint-liquid.js";
 import { applyDeployPrefix, applyPrefix, clearSession } from "./session.js";
 import { askLine, c, clipTitle, printBlock, selectMenu } from "./ui.js";
 
@@ -25,9 +27,28 @@ function helpShell() {
   console.log(`
   ${c.bold("Modo shell")} — cada línea se ejecuta en la shell.
 
-  ${c.cyan("/commit")}   ir a modo commit         ${c.cyan("/menu")}     ir al menú
-  ${c.cyan("/help")}     esta ayuda               ${c.cyan("/exit")}     salir del entorno
+  ${c.cyan("/lint")}     test de sintaxis Liquid  ${c.cyan("/commit")}   ir a modo commit
+  ${c.cyan("/menu")}     ir al menú               ${c.cyan("/exit")}     salir del entorno
+  ${c.cyan("/help")}     esta ayuda
 `);
+}
+
+function printLintResult({ files, errors }) {
+  if (!files) {
+    console.log(c.yellow("  No hay archivos .tpl / .liquid en el repo."));
+    return;
+  }
+  if (!errors.length) {
+    console.log(c.green(`  Sintaxis OK. ${files} archivo${files === 1 ? "" : "s"} sin errores.`));
+    return;
+  }
+  console.log(
+    c.red(
+      `  ${errors.length} error${errors.length === 1 ? "" : "es"} en ${files} archivo${files === 1 ? "" : "s"}:`,
+    ),
+  );
+  console.log("");
+  printBlock(formatLintErrors(errors));
 }
 
 function runShell(command) {
@@ -115,6 +136,11 @@ async function closeActiveIssue(session, { owner, repo }) {
 }
 
 async function handleSharedCommand(lower, { session, owner, repo }) {
+  if (lower === "/ldt") {
+    const off = toggleHooksDisabled();
+    console.log(c.dim(off ? "  Hooks desactivados." : "  Hooks activados."));
+    return null;
+  }
   if (lower === "/exit" || lower === "/salir" || lower === "exit" || lower === "salir") {
     return "exit";
   }
@@ -175,6 +201,11 @@ async function runShellMode(session, ctx) {
     return null;
   }
   if (lower === "/commit") return "mode:commit";
+  if (lower === "/lint" || lower === "/syntax" || lower === "/sintaxis") {
+    console.log(c.dim("  Revisando sintaxis Liquid de todos los archivos..."));
+    printLintResult(lintAllLiquid());
+    return null;
+  }
   const shared = await handleSharedCommand(lower, { session, ...ctx });
   if (shared !== undefined) return shared;
 

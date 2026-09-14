@@ -31,7 +31,7 @@ Hay dos modos. En **commit**, el texto es el mensaje: stagea lo que falte, commi
 | Comando | Qué hace |
 | --- | --- |
 | `/shell` | Pasa a modo shell (desde commit) |
-| `/commit` | Pasa a modo commit (desde shell) |
+| `/lint` | En modo shell: test de sintaxis Liquid en todos los `.tpl` / `.liquid` |
 | `/menu` | Vuelve al menú de issues |
 | `/close` | Cierra el issue activo en GitHub |
 | `/dpy` | Commitea con el prefijo `[#N] [deploy]` (solo commit) |
@@ -55,4 +55,4 @@ Requiere [GitHub CLI](https://cli.github.com/). El login se hace **una sola vez 
 - `issue.sh` — atajo que llama al CLI de Node.
 - La consola es un prompt propio (`src/repl.js`), no un bash anidado: un bash interactivo lanzado desde Node sobre MSYS se cierra apenas arranca.
 - Los comandos de git se corren capturando la salida en vez de heredar la consola. En Windows, git resetea el modo VT de la terminal y desde ahí los códigos ANSI se imprimen en crudo (`←[1G←[0J`).
-- Hooks `prepare-commit-msg` y `commit-msg` en `.git/hooks` (copia versionada en `.githooks/`). El start solo instala los hooks locales y escribe únicamente si el contenido cambió; la copia versionada se regenera con `./issue.sh setup`.
+- Hooks `pre-commit`, `prepare-commit-msg` y `commit-msg` en `.git/hooks` (copia versionada en `.githooks/`). El `pre-commit` revisa Liquid en stage: `if`/`for`/`set`/`block`/`embed`/`macro`, asignaciones `set`, y paréntesis/llaves dentro de `{{ }}` y `{% %}`. Cancela el commit si hay errores. El start solo instala los hooks locales y escribe únicamente si el contenido cambió; la copia versionada se regenera con `./issue.sh setup`.

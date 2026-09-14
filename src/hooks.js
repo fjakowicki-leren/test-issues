@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { repoRoot, resolveGitDir } from "./repo.js";
 
-const HOOK_NAMES = ["prepare-commit-msg", "commit-msg"];
+const HOOK_NAMES = ["pre-commit", "prepare-commit-msg", "commit-msg"];
 
 function hookScript() {
   return `#!/bin/sh
-# Instalado por issue-env. Prefija commits con el issue activo.
+# Instalado por issue-env. Prefija commits y valida Liquid (if/else/for/set).
 ROOT=$(git rev-parse --show-toplevel) || exit 1
 HOOK=$(basename "$0")
 exec node "$ROOT/src/git-hook.js" "$HOOK" "$@"
@@ -27,17 +27,39 @@ function writeIfChanged(file, content) {
   return true;
 }
 
+function hookOffPath() {
+  return path.join(resolveGitDir(), "issue-env-hooks-off");
+}
+
+export function areHooksDisabled() {
+  return fs.existsSync(hookOffPath());
+}
+
+/** Toggle. Devuelve `true` si quedaron desactivados. */
+export function toggleHooksDisabled() {
+  const file = hookOffPath();
+  if (fs.existsSync(file)) {
+    fs.unlinkSync(file);
+    return false;
+  }
+  fs.writeFileSync(file, `${new Date().toISOString()}\n`);
+  return true;
+}
+
 export function installHooks({ tracked = false } = {}) {
   const hooksDir = path.join(resolveGitDir(), "hooks");
   fs.mkdirSync(hooksDir, { recursive: true });
+  const installed = [];
   for (const name of HOOK_NAMES) {
     const dest = path.join(hooksDir, name);
-    if (!writeIfChanged(dest, hookScript())) continue;
+    if (fs.existsSync(dest)) continue;
+    fs.writeFileSync(dest, hookScript(), { encoding: "utf8" });
     try {
       fs.chmodSync(dest, 0o755);
     } catch {
       // Windows puede no soportar chmod; Git Bash igual ejecuta el shebang.
     }
+    installed.push(name);
   }
   if (tracked) {
     const trackedDir = path.join(repoRoot(), ".githooks");
@@ -46,5 +68,5 @@ export function installHooks({ tracked = false } = {}) {
       writeIfChanged(path.join(trackedDir, name), hookScript());
     }
   }
-  return HOOK_NAMES;
+  return { all: HOOK_NAMES, installed };
 }
