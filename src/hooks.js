@@ -6,10 +6,17 @@ const HOOK_NAMES = ["pre-commit", "prepare-commit-msg", "commit-msg"];
 
 function hookScript() {
   return `#!/bin/sh
-# Instalado por issue-env. Prefija commits y valida Liquid (if/else/for/set).
+# Instalado por leren-cli. Prefija commits y valida Liquid.
+# En un clone de leren-cli usa src/ local; en una tienda delega al paquete canónico.
 ROOT=$(git rev-parse --show-toplevel) || exit 1
 HOOK=$(basename "$0")
-exec node "$ROOT/src/git-hook.js" "$HOOK" "$@"
+if [ -f "$ROOT/src/git-hook.js" ] && [ -f "$ROOT/bin/leren-cli.js" ]; then
+  exec node "$ROOT/src/git-hook.js" "$HOOK" "$@"
+fi
+if command -v leren-cli >/dev/null 2>&1; then
+  exec leren-cli hook "$HOOK" "$@"
+fi
+exec npx --yes github:Leren-Dev/leren-cli hook "$HOOK" "$@"
 `;
 }
 
@@ -28,7 +35,7 @@ function writeIfChanged(file, content) {
 }
 
 function hookOffPath() {
-  return path.join(resolveGitDir(), "issue-env-hooks-off");
+  return path.join(resolveGitDir(), "leren-cli-hooks-off");
 }
 
 export function areHooksDisabled() {

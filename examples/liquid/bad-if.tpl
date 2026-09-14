@@ -1,0 +1,2 @@
+{% if product %}
+  sin endif

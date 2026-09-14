@@ -3,7 +3,10 @@ import path from "node:path";
 import { resolveGitDir } from "./repo.js";
 
 export function sessionPath() {
-  return path.join(resolveGitDir(), "issue-env.json");
+  const dir = resolveGitDir();
+  const next = path.join(dir, "leren-cli.json");
+  const prev = path.join(dir, "issue-env.json");
+  return fs.existsSync(next) ? next : fs.existsSync(prev) ? prev : next;
 }
 
 export function readSession() {
@@ -25,13 +28,17 @@ export function writeSession(issue) {
     prefix: `[#${number}]`,
     startedAt: new Date().toISOString(),
   };
-  fs.writeFileSync(sessionPath(), `${JSON.stringify(session, null, 2)}\n`);
+  const dest = path.join(resolveGitDir(), "leren-cli.json");
+  fs.writeFileSync(dest, `${JSON.stringify(session, null, 2)}\n`);
   return session;
 }
 
 export function clearSession() {
-  const file = sessionPath();
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  const dir = resolveGitDir();
+  for (const name of ["leren-cli.json", "issue-env.json"]) {
+    const file = path.join(dir, name);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
 }
 
 export function prefixFor(number) {

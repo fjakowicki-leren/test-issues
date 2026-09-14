@@ -46,7 +46,10 @@ function ghBin() {
 }
 
 function authMarkerPath() {
-  return path.join(resolveGitDir(), "issue-env-auth.json");
+  const dir = resolveGitDir();
+  const next = path.join(dir, "leren-cli-auth.json");
+  const prev = path.join(dir, "issue-env-auth.json");
+  return fs.existsSync(next) ? next : fs.existsSync(prev) ? prev : next;
 }
 
 export function readAuthMarker() {
@@ -66,13 +69,19 @@ export function writeAuthMarker(user) {
     user: user || "",
     at: new Date().toISOString(),
   };
-  fs.writeFileSync(authMarkerPath(), `${JSON.stringify(marker, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(resolveGitDir(), "leren-cli-auth.json"),
+    `${JSON.stringify(marker, null, 2)}\n`,
+  );
   return marker;
 }
 
 export function clearAuthMarker() {
-  const file = authMarkerPath();
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  const dir = resolveGitDir();
+  for (const name of ["leren-cli-auth.json", "issue-env-auth.json"]) {
+    const file = path.join(dir, name);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
 }
 
 export function ghAvailable() {
@@ -128,7 +137,7 @@ function ghAuthLogin() {
 }
 
 function missingGhMessage() {
-  return "No está instalado GitHub CLI (gh). Instalalo desde https://cli.github.com/ (Windows: winget install --id GitHub.cli) y volvé a correr issue start.";
+  return "No está instalado GitHub CLI (gh). Instalalo desde https://cli.github.com/ (Windows: winget install --id GitHub.cli) y volvé a correr leren-cli.";
 }
 
 /**

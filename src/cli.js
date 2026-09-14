@@ -1,5 +1,6 @@
 import { clearAuthMarker, ensureGhAuth } from "./gh.js";
 import { closeIssue, createIssue, listOpenIssues, listRecentIssues } from "./github.js";
+import { runGitHook } from "./git-hook.js";
 import { installHooks } from "./hooks.js";
 import { githubRepoFromOrigin } from "./repo.js";
 import { runEnvironment } from "./repl.js";
@@ -17,13 +18,13 @@ import {
 
 function usage() {
   console.log(`
-${c.bold("issue-env")} — consola de trabajo por issue de GitHub
+${c.bold("leren-cli")} — consola de trabajo por issue (themes Tiendanube / Leren)
 
-  ${c.cyan("./issue.sh")}          Muestra los últimos 10 issues, obliga a elegir uno abierto o crear, abre la consola
-  ${c.cyan("./issue.sh status")}   Muestra el issue activo
-  ${c.cyan("./issue.sh stop")}     Cierra la sesión (los commits quedan bloqueados hasta elegir otro)
-  ${c.cyan("./issue.sh login")}    Fuerza un nuevo gh auth login
-  ${c.cyan("./issue.sh setup")}    Instala los hooks de git y actualiza la copia versionada en .githooks/
+  ${c.cyan("leren-cli")}          Muestra los últimos 10 issues, obliga a elegir o crear, abre la consola
+  ${c.cyan("leren-cli status")}   Muestra el issue activo
+  ${c.cyan("leren-cli stop")}     Cierra la sesión (los commits quedan bloqueados hasta elegir otro)
+  ${c.cyan("leren-cli login")}    Fuerza un nuevo gh auth login
+  ${c.cyan("leren-cli setup")}    Instala los hooks de git en este repo (la tienda)
 
 El login de GitHub se hace una sola vez por entorno y queda cacheado.
 Sin issue activo no se puede hacer commit. El mensaje queda como: ${c.bold("[#12] resumen")}
@@ -221,7 +222,7 @@ async function cmdStart() {
         console.log("");
         console.log(
           c.dim(
-            `  Saliste del entorno de #${session.number}. La sesión sigue activa (issue stop para cerrarla).`,
+            `  Saliste del entorno de #${session.number}. La sesión sigue activa (leren-cli stop para cerrarla).`,
           ),
         );
         break;
@@ -259,12 +260,16 @@ async function cmdLogin() {
 }
 
 function cmdSetup() {
-  const { all, installed } = installHooks({ tracked: true });
+  const { all, installed } = installHooks();
   if (installed.length) {
-    console.log(`  Hooks instalados: ${installed.join(", ")}`);
+    console.log(`  Hooks instalados en .git/hooks: ${installed.join(", ")}`);
   } else {
-    console.log(`  Hooks ya estaban instalados: ${all.join(", ")}`);
+    console.log(`  Hooks ya estaban en .git/hooks: ${all.join(", ")}`);
   }
+}
+
+function cmdHook(args) {
+  runGitHook(args[0], args[1], args[2] || "");
 }
 
 export async function main(argv) {
@@ -272,7 +277,7 @@ export async function main(argv) {
   const positional = args.filter((a) => !a.startsWith("-"));
   const cmd = positional[0] || "start";
 
-  if (cmd === "-h" || cmd === "--help" || cmd === "help") {
+  if (args.includes("-h") || args.includes("--help") || cmd === "help") {
     usage();
     return;
   }
@@ -282,6 +287,7 @@ export async function main(argv) {
   if (cmd === "stop") return cmdStop();
   if (cmd === "login") return cmdLogin();
   if (cmd === "setup") return cmdSetup();
+  if (cmd === "hook") return cmdHook(positional.slice(1));
 
   console.error(`Comando desconocido: ${cmd}`);
   usage();

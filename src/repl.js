@@ -259,7 +259,7 @@ export async function runEnvironment(session, { owner, repo, mode = "commit" } =
     console.log("");
     console.log(
       c.dim(
-        `  Saliste del entorno de #${session.number}. La sesión sigue activa (issue stop para cerrarla).`,
+        `  Saliste del entorno de #${session.number}. La sesión sigue activa (leren-cli stop para cerrarla).`,
       ),
     );
   }

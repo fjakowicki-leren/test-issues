@@ -34,7 +34,7 @@ export function printBlock(text) {
 
 export function banner(owner, repo) {
   console.log("");
-  console.log(c.bold(c.magenta("  issue-env")) + c.dim("  ·  trabajo atado a un issue"));
+  console.log(c.bold(c.magenta("  leren-cli")) + c.dim("  ·  trabajo atado a un issue"));
   console.log(c.dim(`  ${owner}/${repo}`));
   console.log("");
 }
@@ -329,7 +329,7 @@ export async function selectMenu(title, items) {
 
 export function printSession(session) {
   if (!session) {
-    console.log(c.yellow("  No hay un issue activo. Corré `issue start`."));
+    console.log(c.yellow("  No hay un issue activo. Corré `leren-cli`."));
     return;
   }
   console.log(

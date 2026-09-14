@@ -395,6 +395,11 @@ export function isLiquidFile(file) {
   return LIQUID_EXT.test(file);
 }
 
+function isLintFixture(file) {
+  const posix = file.split(path.sep).join("/");
+  return posix === "examples" || posix.startsWith("examples/");
+}
+
 function stagedLiquidFiles() {
   const result = spawnSync(
     "git",
@@ -405,7 +410,7 @@ function stagedLiquidFiles() {
   return String(result.stdout || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((file) => file && isLiquidFile(file));
+    .filter((file) => file && isLiquidFile(file) && !isLintFixture(file));
 }
 
 function stagedContent(file) {
@@ -434,7 +439,7 @@ function walkLiquidFiles(dir, acc = []) {
     return acc;
   }
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "examples") continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walkLiquidFiles(full, acc);
     else if (isLiquidFile(entry.name)) acc.push(full);

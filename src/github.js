@@ -29,7 +29,7 @@ export function githubToken() {
 function headers(token) {
   const h = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "issue-env",
+    "User-Agent": "leren-cli",
     "X-GitHub-Api-Version": "2022-11-28",
   };
   if (token) h.Authorization = `Bearer ${token}`;

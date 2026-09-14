@@ -1,16 +1,24 @@
 {
-  "name": "issue-env",
-  "version": "1.0.0",
-  "description": "Consola de trabajo atada a un issue de GitHub: los commits llevan el prefijo del issue activo.",
+  "name": "leren-cli",
+  "version": "0.1.0",
+  "description": "CLI interno Leren: consola por issue de GitHub, commits [#N] y lint Liquid para themes Tiendanube.",
   "type": "module",
   "bin": {
-    "issue": "./bin/issue.js"
+    "leren-cli": "./bin/leren-cli.js",
+    "leren": "./bin/leren-cli.js"
   },
   "scripts": {
-    "start": "node bin/issue.js",
-    "issue": "node bin/issue.js"
+    "start": "node bin/leren-cli.js",
+    "leren": "node bin/leren-cli.js",
+    "test": "node scripts/test-lint.js"
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leren-Dev/leren-cli.git"
+  },
+  "license": "UNLICENSED",
+  "private": true
 }

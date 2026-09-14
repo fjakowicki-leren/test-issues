@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Alias local: el comando oficial es leren-cli.
+# Launcher local del CLI (repo canónico o clone).
 set -euo pipefail
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec node "$ROOT/bin/leren-cli.js" "$@"
