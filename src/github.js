@@ -93,16 +93,28 @@ export function listRecentIssues(owner, repo, limit = 10) {
   return listIssues(owner, repo, { state: "all", limit, sort: "updated" });
 }
 
-export async function createIssue(owner, repo, { title, body }) {
+function requireToken(action) {
   const token = githubToken();
   if (!token) {
     throw new Error(
-      "Para crear un issue necesitás autenticación. Exportá GH_TOKEN o instalá GitHub CLI (`gh auth login`).",
+      `Para ${action} necesitás autenticación. Exportá GH_TOKEN o instalá GitHub CLI (\`gh auth login\`).`,
     );
   }
+  return token;
+}
+
+export async function createIssue(owner, repo, { title, body }) {
   return request(`/repos/${owner}/${repo}/issues`, {
     method: "POST",
     body: { title, body: body || "" },
-    token,
+    token: requireToken("crear un issue"),
+  });
+}
+
+export async function closeIssue(owner, repo, number) {
+  return request(`/repos/${owner}/${repo}/issues/${number}`, {
+    method: "PATCH",
+    body: { state: "closed" },
+    token: requireToken("cerrar un issue"),
   });
 }

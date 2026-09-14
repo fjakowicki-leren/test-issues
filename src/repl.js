@@ -2,27 +2,31 @@ import { spawnSync } from "node:child_process";
 import {
   commit,
   currentBranch,
-  diff,
   hasAnyChanges,
   hasStagedChanges,
-  log,
-  pull,
   push,
-  shortStatus,
   stageAll,
 } from "./git.js";
-import { applyDeployPrefix, applyPrefix } from "./session.js";
-import { askLine, c, clipTitle, printBlock } from "./ui.js";
+import { closeIssue } from "./github.js";
+import { applyDeployPrefix, applyPrefix, clearSession } from "./session.js";
+import { askLine, c, clipTitle, printBlock, selectMenu } from "./ui.js";
 
-function help() {
+function helpCommit() {
   console.log(`
-  ${c.bold("Escribí el mensaje y Enter")} para commitear con el prefijo del issue.
+  ${c.bold("Modo commit")} — el texto se toma como mensaje de commit.
 
-  ${c.cyan("/status")}   estado del repo          ${c.cyan("/diff")}     cambios sin commitear
-  ${c.cyan("/add")}      stagea todo              ${c.cyan("/log")}      últimos commits
-  ${c.cyan("/push")}     envía a origin           ${c.cyan("/pull")}     trae de origin
-  ${c.cyan("/issue")}    cambiar de issue         ${c.cyan("/exit")}     salir del entorno
-  ${c.cyan("/deploy")}   commitea con ${c.bold("[deploy]")}   ${c.cyan("!<cmd>")}    comando en la shell
+  ${c.cyan("/deploy")}   commitea con ${c.bold("[deploy]")}   ${c.cyan("/shell")}    ir a modo shell
+  ${c.cyan("/menu")}     ir al menú               ${c.cyan("/close")}    cerrar el issue activo
+  ${c.cyan("/help")}     esta ayuda               ${c.cyan("/exit")}     salir del entorno
+`);
+}
+
+function helpShell() {
+  console.log(`
+  ${c.bold("Modo shell")} — cada línea se ejecuta en la shell.
+
+  ${c.cyan("/commit")}   ir a modo commit         ${c.cyan("/menu")}     ir al menú
+  ${c.cyan("/help")}     esta ayuda               ${c.cyan("/exit")}     salir del entorno
 `);
 }
 
@@ -40,9 +44,12 @@ function report({ status, out }, okMessage) {
   return false;
 }
 
-/** Prompt de ancho fijo: el título va arriba para que el input no se mueva. */
-function promptFor(session) {
-  return `${c.green(`[#${session.number}]`)} ${c.dim("›")} `;
+function promptFor(session, mode) {
+  const tag = c.green(`[#${session.number}]`);
+  if (mode === "shell") {
+    return `${tag} ${c.cyan("shell")} ${c.dim("›")} `;
+  }
+  return `${tag} ${c.dim("›")} `;
 }
 
 function printTitle(session) {
@@ -86,92 +93,135 @@ async function doCommit(session, message, { deploy = false } = {}) {
   );
   const answer = (raw ?? "n").trim().toLowerCase();
   if (answer === "n" || answer === "no") {
-    console.log(c.dim("  Commit local. Podés enviarlo después con /push."));
+    console.log(c.dim("  Commit local. Para pushear, pasá a modo shell y corré git push."));
     return;
   }
   if (!report(push(), "Enviado.")) {
-    console.log(c.red("  El push falló. Reintentá con /push."));
+    console.log(c.red("  El push falló. Reintentá en modo shell con git push."));
   }
 }
 
-/**
- * Consola del entorno. Queda abierta hasta /exit: cada línea que no sea un
- * comando se toma como mensaje de commit.
- * Devuelve "exit" o "switch" para que el CLI decida qué hacer.
- * No usa readline: en Git Bash eso rompe las flechas al volver al menú.
- */
-export async function runEnvironment(session) {
-  let action = "exit";
+async function closeActiveIssue(session, { owner, repo }) {
+  const ok = await selectMenu(`¿Cerrar ${c.green(`#${session.number}`)}?`, [
+    { value: "yes", label: `Cerrar #${session.number}  ${session.title}` },
+    { value: "no", label: "Cancelar" },
+  ]);
+  if (ok !== "yes") return null;
+  console.log(c.dim(`  Cerrando #${session.number}...`));
+  await closeIssue(owner, repo, session.number);
+  clearSession();
+  console.log(c.green(`  Cerrado #${session.number}  ${session.title}`));
+  return "closed";
+}
 
-  console.log(c.dim("  Escribí un mensaje para commitear, o /help para ver los comandos."));
+async function handleSharedCommand(lower, { session, owner, repo }) {
+  if (lower === "/exit" || lower === "/salir" || lower === "exit" || lower === "salir") {
+    return "exit";
+  }
+  if (lower === "/menu") return "switch";
+  if (lower === "/close" || lower === "/cerrar") {
+    return closeActiveIssue(session, { owner, repo });
+  }
+  return undefined;
+}
+
+async function runCommitMode(session, ctx) {
+  printTitle(session);
+  const line = await envAsk(promptFor(session, "commit"));
+  if (line === null) return "exit";
+
+  const value = line.trim();
+  if (!value) return null;
+  const lower = value.toLowerCase();
+
+  if (lower === "/help" || lower === "/ayuda" || lower === "?") {
+    helpCommit();
+    return null;
+  }
+  if (lower === "/shell") return "mode:shell";
+  const shared = await handleSharedCommand(lower, { session, ...ctx });
+  if (shared !== undefined) return shared;
+
+  if (lower === "/deploy" || lower.startsWith("/deploy ")) {
+    const extra = value.slice("/deploy".length).trim();
+    const message = extra || (await envAsk("  Mensaje del deploy: "));
+    if (!message) {
+      console.log(c.red("  El mensaje no puede estar vacío."));
+      return null;
+    }
+    await doCommit(session, message, { deploy: true });
+    return null;
+  }
+  if (value.startsWith("/")) {
+    console.log(c.yellow(`  Comando desconocido: ${value}. Probá /help o /shell.`));
+    return null;
+  }
+
+  await doCommit(session, value);
+  return null;
+}
+
+async function runShellMode(session, ctx) {
+  printTitle(session);
+  const line = await envAsk(promptFor(session, "shell"));
+  if (line === null) return "exit";
+
+  const value = line.trim();
+  if (!value) return null;
+  const lower = value.toLowerCase();
+
+  if (lower === "/help" || lower === "/ayuda" || lower === "?") {
+    helpShell();
+    return null;
+  }
+  if (lower === "/commit") return "mode:commit";
+  const shared = await handleSharedCommand(lower, { session, ...ctx });
+  if (shared !== undefined) return shared;
+
+  if (value.startsWith("/")) {
+    console.log(c.yellow(`  Comando desconocido: ${value}. Probá /help o /commit.`));
+    return null;
+  }
+
+  runShell(value);
+  return null;
+}
+
+/**
+ * Consola del entorno en modo commit o shell.
+ * Devuelve "exit", "switch" o "closed".
+ */
+export async function runEnvironment(session, { owner, repo, mode = "commit" } = {}) {
+  let action = "exit";
+  let current = mode === "shell" ? "shell" : "commit";
+
+  if (current === "shell") {
+    console.log(c.dim("  Modo shell. Escribí un comando, /commit para commitear o /help."));
+  } else {
+    console.log(c.dim("  Modo commit. Escribí el mensaje, /shell para la terminal o /help."));
+  }
   console.log("");
 
   while (true) {
-    printTitle(session);
-    const line = await envAsk(promptFor(session));
-    if (line === null) break;
+    const result =
+      current === "shell"
+        ? await runShellMode(session, { owner, repo })
+        : await runCommitMode(session, { owner, repo });
 
-    const value = line.trim();
-    if (!value) continue;
-    const lower = value.toLowerCase();
-
-    if (lower === "/exit" || lower === "/salir" || lower === "exit" || lower === "salir") {
+    if (result === "mode:shell") {
+      current = "shell";
+      console.log(c.dim("  Modo shell."));
+      continue;
+    }
+    if (result === "mode:commit") {
+      current = "commit";
+      console.log(c.dim("  Modo commit."));
+      continue;
+    }
+    if (result === "exit" || result === "switch" || result === "closed") {
+      action = result;
       break;
     }
-    if (lower === "/help" || lower === "/ayuda" || lower === "?") {
-      help();
-      continue;
-    }
-    if (lower === "/status" || lower === "/st") {
-      printBlock(shortStatus() || "Sin cambios.");
-      continue;
-    }
-    if (lower === "/diff") {
-      printBlock(diff().out || "Sin cambios.");
-      continue;
-    }
-    if (lower === "/add") {
-      stageAll();
-      printBlock(shortStatus());
-      continue;
-    }
-    if (lower === "/log") {
-      printBlock(log().out || "Todavía no hay commits.");
-      continue;
-    }
-    if (lower === "/push") {
-      report(push(), "Enviado.");
-      continue;
-    }
-    if (lower === "/pull") {
-      report(pull());
-      continue;
-    }
-    if (lower === "/issue") {
-      action = "switch";
-      break;
-    }
-    if (lower === "/deploy" || lower.startsWith("/deploy ")) {
-      const extra = value.slice("/deploy".length).trim();
-      const message = extra || (await envAsk("  Mensaje del deploy: "));
-      if (!message) {
-        console.log(c.red("  El mensaje no puede estar vacío."));
-        continue;
-      }
-      await doCommit(session, message, { deploy: true });
-      continue;
-    }
-    if (value.startsWith("!")) {
-      const command = value.slice(1).trim();
-      if (command) runShell(command);
-      continue;
-    }
-    if (value.startsWith("/")) {
-      console.log(c.yellow(`  Comando desconocido: ${value}. Probá /help.`));
-      continue;
-    }
-
-    await doCommit(session, value);
   }
 
   if (action === "exit") {

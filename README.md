@@ -20,21 +20,21 @@ npm start
 
 ## Dentro del entorno
 
-La consola queda abierta hasta que escribas `/exit`. Todo lo que no sea un comando se toma como mensaje de commit: stagea lo que falte, commitea con el prefijo y ofrece pushear.
+Hay dos modos. En **commit**, el texto es el mensaje: stagea lo que falte, commitea con el prefijo y ofrece pushear. En **shell**, cada línea se ejecuta en la terminal (`git status`, `git push`, etc.).
 
 ```
 [#12] › corrige validación del formulario
   ¿Push a origin/main? [S/n]
+[#12] shell › git status
 ```
 
 | Comando | Qué hace |
 | --- | --- |
-| `/status`, `/diff`, `/log` | Estado, cambios y últimos commits |
-| `/add` | Stagea todo |
-| `/push`, `/pull` | Envía o trae de origin |
-| `/issue` | Cambia de issue sin salir |
-| `/deploy` | Commitea con el prefijo `[#N] [deploy]` |
-| `!<cmd>` | Ejecuta cualquier comando en la shell |
+| `/shell` | Pasa a modo shell (desde commit) |
+| `/commit` | Pasa a modo commit (desde shell) |
+| `/menu` | Vuelve al menú de issues |
+| `/close` | Cierra el issue activo en GitHub |
+| `/deploy` | Commitea con el prefijo `[#N] [deploy]` (solo commit) |
 | `/exit` | Sale del entorno |
 
 Sin issue activo, `git commit` se aborta. Los colores se apagan solos si la salida no es una terminal, o con `NO_COLOR=1`.

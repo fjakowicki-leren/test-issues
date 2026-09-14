@@ -1,5 +1,5 @@
 import { clearAuthMarker, ensureGhAuth } from "./gh.js";
-import { createIssue, listOpenIssues, listRecentIssues } from "./github.js";
+import { closeIssue, createIssue, listOpenIssues, listRecentIssues } from "./github.js";
 import { installHooks } from "./hooks.js";
 import { githubRepoFromOrigin } from "./repo.js";
 import { runEnvironment } from "./repl.js";
@@ -56,6 +56,44 @@ async function createIssueFlow({ owner, repo }) {
   return created;
 }
 
+async function confirmCloseIssue(issue) {
+  const ok = await selectMenu(`¿Cerrar ${c.green(`#${issue.number}`)}?`, [
+    { value: "yes", label: `Cerrar #${issue.number}  ${issue.title}` },
+    { value: "no", label: "Cancelar" },
+  ]);
+  return ok === "yes";
+}
+
+async function closeIssueFlow({ owner, repo }, issue) {
+  if (!(await confirmCloseIssue(issue))) return false;
+  console.log(c.dim(`  Cerrando #${issue.number}...`));
+  await closeIssue(owner, repo, issue.number);
+  console.log(c.green(`  Cerrado #${issue.number}  ${issue.title}`));
+  const current = readSession();
+  if (current && Number(current.number) === Number(issue.number)) {
+    clearSession();
+  }
+  return true;
+}
+
+async function pickIssueToClose({ owner, repo }) {
+  const open = await listOpenIssues(owner, repo);
+  if (open.length === 0) {
+    console.log(c.yellow("  No hay issues abiertos para cerrar."));
+    return false;
+  }
+  const items = [
+    ...open.map((issue) => ({
+      value: issue,
+      label: formatIssueOption(issue),
+    })),
+    { value: "cancel", label: "Cancelar" },
+  ];
+  const chosen = await selectMenu("¿Cuál issue cerrás?", items);
+  if (chosen == null || chosen === "cancel") return false;
+  return closeIssueFlow({ owner, repo }, chosen);
+}
+
 async function pickOpenIssue(issues, { owner, repo }) {
   while (true) {
     const items = [
@@ -86,12 +124,29 @@ async function selectIssue(owner, repo) {
     while (!chosen) {
       console.log(c.dim("  Cargando los 10 issues más recientes..."));
       printRecentIssues(await listRecentIssues(owner, repo, 10));
+      const current = readSession();
       const action = await selectMenu("¿Qué querés hacer?", [
         { value: "list", label: "Elegir de la lista" },
         { value: "create", label: "Crear un issue nuevo" },
-        { value: "cancel", label: "Cancelar" },
+        { value: "close", label: "Cerrar un issue" },
+        ...(current
+          ? [
+              { value: "commit", label: "Modo commit" },
+              { value: "shell", label: "Modo shell" },
+            ]
+          : []),
+        { value: "exit", label: "Salir" },
       ]);
-      if (action == null || action === "cancel") break;
+      if (action === "exit") return "exit";
+      if (action == null) break;
+      if (action === "commit" || action === "shell") {
+        current.mode = action;
+        return current;
+      }
+      if (action === "close") {
+        await pickIssueToClose({ owner, repo });
+        continue;
+      }
       if (action === "create") {
         chosen = await createIssueFlow({ owner, repo });
         continue;
@@ -103,6 +158,11 @@ async function selectIssue(owner, repo) {
     if (!chosen) return null;
 
     const session = writeSession(chosen);
+    const mode = await selectMenu("¿En qué modo?", [
+      { value: "commit", label: "Modo commit" },
+      { value: "shell", label: "Modo shell" },
+    ]);
+    session.mode = mode === "shell" ? "shell" : "commit";
     console.log("");
     printSession(session);
     console.log("");
@@ -127,7 +187,7 @@ async function cmdStart() {
 
   await withRawStdin(async () => {
     let session = await selectIssue(owner, repo);
-    if (!session) {
+    if (!session || session === "exit") {
       console.log("");
       console.log(c.yellow("  No se activó ningún issue. Los commits seguirán bloqueados."));
       process.exitCode = 1;
@@ -135,10 +195,34 @@ async function cmdStart() {
     }
 
     while (session) {
-      const action = await runEnvironment(session);
+      const action = await runEnvironment(session, {
+        owner,
+        repo,
+        mode: session.mode || "commit",
+      });
+      if (action === "closed") {
+        console.log("");
+        session = await selectIssue(owner, repo);
+        if (!session || session === "exit") {
+          console.log("");
+          console.log(c.yellow("  No se activó ningún issue. Los commits seguirán bloqueados."));
+          process.exitCode = 1;
+          return;
+        }
+        continue;
+      }
       if (action !== "switch") break;
       console.log("");
       const next = await selectIssue(owner, repo);
+      if (next === "exit") {
+        console.log("");
+        console.log(
+          c.dim(
+            `  Saliste del entorno de #${session.number}. La sesión sigue activa (issue stop para cerrarla).`,
+          ),
+        );
+        break;
+      }
       if (!next) {
         console.log(c.dim(`  Seguís en #${session.number}.`));
         continue;
