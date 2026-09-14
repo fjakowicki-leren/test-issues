@@ -34,7 +34,7 @@ Hay dos modos. En **commit**, el texto es el mensaje: stagea lo que falte, commi
 | `/commit` | Pasa a modo commit (desde shell) |
 | `/menu` | Vuelve al menú de issues |
 | `/close` | Cierra el issue activo en GitHub |
-| `/deploy` | Commitea con el prefijo `[#N] [deploy]` (solo commit) |
+| `/dpy` | Commitea con el prefijo `[#N] [deploy]` (solo commit) |
 | `/exit` | Sale del entorno |
 
 Sin issue activo, `git commit` se aborta. Los colores se apagan solos si la salida no es una terminal, o con `NO_COLOR=1`.

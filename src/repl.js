@@ -15,7 +15,7 @@ function helpCommit() {
   console.log(`
   ${c.bold("Modo commit")} — el texto se toma como mensaje de commit.
 
-  ${c.cyan("/deploy")}   commitea con ${c.bold("[deploy]")}   ${c.cyan("/shell")}    ir a modo shell
+  ${c.cyan("/dpy")}      commitea con ${c.bold("[deploy]")}   ${c.cyan("/shell")}    ir a modo shell
   ${c.cyan("/menu")}     ir al menú               ${c.cyan("/close")}    cerrar el issue activo
   ${c.cyan("/help")}     esta ayuda               ${c.cyan("/exit")}     salir del entorno
 `);
@@ -142,8 +142,8 @@ async function runCommitMode(session, ctx) {
   const shared = await handleSharedCommand(lower, { session, ...ctx });
   if (shared !== undefined) return shared;
 
-  if (lower === "/deploy" || lower.startsWith("/deploy ")) {
-    const extra = value.slice("/deploy".length).trim();
+  if (lower === "/dpy" || lower.startsWith("/dpy ")) {
+    const extra = value.slice("/dpy".length).trim();
     const message = extra || (await envAsk("  Mensaje del deploy: "));
     if (!message) {
       console.log(c.red("  El mensaje no puede estar vacío."));
